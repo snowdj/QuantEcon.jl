@@ -16,38 +16,44 @@ export
     ARMA,
     spectral_density, autocovariance, impulse_response, simulation,
 
+# compute_fp
+    compute_fixed_point,
+
+# discrete_rv
+    DiscreteRV,
+    draw,
+
+# distributions
+    BetaBinomial,
+    pdf, mean, std, var, skewness,
+
 # ecdf
     ECDF,
     ecdf,
+
+# estspec
+    smooth, periodogram, ar_periodogram,
+
+# gensys
+    gensys,
+
+# kalman
+    Kalman,
+    set_state!,
+    prior_to_filtered!,
+    filtered_to_forecast!,
+    update!,
+    stationary_values,
+
+# lae
+    LAE,
+    lae_est,
 
 # lqcontrol
     LQ,
     update_values!,
     stationary_values!, stationary_values,
     compute_sequence,
-
-# compute_fp
-    compute_fixed_point,
-
-# matrix_eqn
-    solve_discrete_lyapunov,
-    solve_discrete_riccati,
-
-# discrete_rv
-    DiscreteRV,
-    draw,
-
-# mc_tools
-    DMarkov,
-    mc_compute_stationary, mc_sample_path, mc_sample_path!,
-
-# mc_tools
-    tauchen,
-    rouwenhorst,
-
-# lae
-    LAE,
-    lae_est,
 
 # lqnash
     nnash,
@@ -59,32 +65,17 @@ export
     moment_sequence,
     stationary_distributions,
 
-# kalman
-    Kalman,
-    set_state!,
-    prior_to_filtered!,
-    filtered_to_forecast!,
-    update!,
-    stationary_values,
+# markov_approx
+    tauchen,
+    rouwenhorst,
 
-# distributions
-    BetaBinomial,
-    pdf, mean, std, var, skewness,
+# matrix_eqn
+    solve_discrete_lyapunov,
+    solve_discrete_riccati,
 
-# estspec
-    smooth, periodogram, ar_periodogram,
-
-# util
-    meshgrid,
-    linspace_range,
-
-# robustlq
-    RBLQ,
-    d_operator, b_operator,
-    robust_rule, robust_rule_simple,
-    F_to_K, K_to_F,
-    compute_deterministic_entropy,
-    evaluate_F,
+# mc_tools
+    DMarkov,
+    mc_compute_stationary, mc_sample_path, mc_sample_path!,
 
 # quad
     qnwlege, qnwcheb, qnwsimp, qnwtrap, qnwbeta, qnwgamma, qnwequi, qnwnorm,
@@ -95,7 +86,19 @@ export
 
 # quadsums
     var_quadratic_sum,
-    m_quadratic_sum
+    m_quadratic_sum,
+
+# robustlq
+    RBLQ,
+    d_operator, b_operator,
+    robust_rule, robust_rule_simple,
+    F_to_K, K_to_F,
+    compute_deterministic_entropy,
+    evaluate_F,
+
+# util
+    meshgrid,
+    linspace_range
 
 include("util.jl")
 ### includes
@@ -105,7 +108,7 @@ include("discrete_rv.jl")
 include("distributions.jl")
 include("ecdf.jl")
 include("estspec.jl")
-include("kalman.jl")
+include("gensys.jl")
 include("kalman.jl")
 include("lae.jl")
 include("lqcontrol.jl")

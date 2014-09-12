@@ -1,3 +1,54 @@
+#=
+
+@author : Spencer Lyon <spencer.lyon@nyu.edu>,
+@author: Chase Coleman <ccoleman@stern.nyu.edu>
+
+@date: 2014-09-11
+
+References
+----------
+
+Simple port of the original Matlab files gensys.m, qzdiv.m, and
+qzswitch.m, written by Chris Sims.
+
+http://sims.princeton.edu/yftp/gensys/
+
+Notes
+-----
+We are allowing Julia to pick the real or complex version of the
+schurfact routine based on the types of Γ0 and Γ1.
+
+When they are both  filled with real values, all the returns except
+[fmat, fwt, ywt] are the same as the Matlab version.
+
+When either or both is complex, all the return values are the same as
+Matlab's.
+
+The reason for this is that matlab always uses the complex version of
+the schur decomposition, even if the inputs are real numbers.
+
+Description from original
+-------------------------
+
+System given as
+
+       Γ0*y(t) = Γ1*y(t-1) + c + ψ*z(t) + π*η(t),
+
+with z an exogenous variable process and eta being endogenously
+determined one-step-ahead expectational errors.  Returned system is
+
+      y(t) = G1*y(t-1) + C + impact*z(t) + ywt*inv(I-fmat*inv(L))*fwt*z(t+1)
+
+If z(t) is i.i.d., the last term drops out.
+
+If div is omitted from argument list, a div>1 is calculated.
+
+eu(1)=1 for existence, eu(2)=1 for uniqueness.  eu(1)=-1 for existence
+only with not-s.c. z; eu=[-2,-2] for coincident zeros.
+
+
+=#
+
 module GenSys
 
 export gensys
@@ -7,7 +58,7 @@ function new_div(F::Base.LinAlg.GeneralizedSchur)
     ε = 1e-6  # small number to check convergence
     n = size(F[:T], 1)
 
-    a, b, q, z = real(F[:S]), real(F[:T]), F[:Q]', F[:Z]
+    a, b, q, z = F[:S], F[:T], F[:Q]', F[:Z]
 
     nunstab = 0.0
     zxz = 0
@@ -33,11 +84,7 @@ end
 
 # method if no div is given
 function gensys(Γ0, Γ1, c, ψ, π)
-    # TODO: right now a, b, q, and z *exactly* match MATLAB -- hence
-    #       the somewhat ugly code. We should check to see if we actually
-    #       need to do the converting to complex before computing schurfact
-    zg0, zg1 = Γ0 + 0.0im, Γ1 + 0.0im
-    F = schurfact(zg0, zg1)
+    F = schurfact!(Γ0, Γ1)
     div = new_div(F)
     gensys(F, c, ψ, π, div)
 end
@@ -45,8 +92,7 @@ end
 
 # method if all arguments are given
 function gensys(Γ0, Γ1, c, ψ, π, div)
-    zg0, zg1 = Γ0 + 0.0im, Γ1 + 0.0im
-    F = schurfact(zg0, zg1)
+    F = schurfact!(Γ0, Γ1)
     gensys(F, c, ψ, π, div)
 end
 
@@ -57,7 +103,8 @@ function gensys(F::Base.LinAlg.GeneralizedSchur, c, ψ, π, div)
     ε = 1e-6  # small number to check convergence
     nunstab = 0.0
     zxz = 0
-    a, b, q, z = map(real, {F[:S], F[:T], F[:Q]', F[:Z]})
+    # a, b, q, z = map(real, {F[:S], F[:T], F[:Q]', F[:Z]})
+    a, b, q, z = F[:S], F[:T], F[:Q]', F[:Z]
     n = size(a, 1)
 
     for i=1:n
@@ -168,7 +215,6 @@ function gensys(F::Base.LinAlg.GeneralizedSchur, c, ψ, π, div)
     fwt = -b[usix, usix]\q2*ψ
     ywt = G0I[:, usix]
 
-    # Correction 5/07/2009:  formerly had forgotten to premultiply by G0I
     loose = G0I * [etawt1 * (eye(neta) - veta * veta'); zeros(nunstab, neta)]
 
     # -------------------- above are output for system in terms of z'y -------
@@ -177,20 +223,17 @@ function gensys(F::Base.LinAlg.GeneralizedSchur, c, ψ, π, div)
     impact = real(z * impact)
     loose = real(z * loose)
 
-    # Correction 10/28/96:  formerly line below had real(z*ywt) on rhs, an error.
     ywt=z*ywt
 
     return G1, C, impact, fmat, fwt, ywt, gev, eu, loose
 end
-
-# end # module
 
 function qzdiv(stake, A, B, Q, Z, v=[])
     n = size(A, 1)
     vin = !isempty(v)
 
     root = abs([diag(A) diag(B)])
-    root[:, 1] = root[:, 1] - (root[:, 1] .< 1e-13) .* (root[:, 1] + root[:, 2])
+    root[:, 1] = root[:, 1] - (root[:, 1] .< 1e-13) .* (root[:, 1]+root[:, 2])
     root[:, 2] = root[:, 2] ./ root[:, 1]
 
     for i=n:-1:1
@@ -286,68 +329,3 @@ function qzswitch(i, A, B, Q, Z)
 end
 
 end  # module
-
-
-#=
-
-    Test case from Peifan's solution to Spring 2014 HW
-
-    Log-linearized model should be written in Sims' form
-
-    Γ0 * y(t) = Γ1 * y(t - 1) + C + Ψ * z(t) + Π * eta(t)
-
-    y(t) = [Ex(t+1) xt Epi(t+1) pit it gt ut]
-
-    z(t) = [epsilon_i epsilon_g epsilon_u]
-
-    eta(t) = [err_x err_pi]
-=#
-
-using GenSys
-
-σ = 1.0
-κ = 0.2
-β = 0.99
-ϕ_π = 1.5
-ϕ_x = 0.5
-ρ_i = 0.9
-σ_i = 1.0
-ρ_g = 0.5
-ρ_u = 0.3
-σ_g = 1.0
-σ_u = 1.0
-Γ0 = [-1  1            -σ  0             σ  -1  0
-      0  -κ            -β  1             0  0  -1
-      0  -(1-ρ_i)*ϕ_x  0   -(1-ρ_i)*ϕ_π  1  0  0
-      0  0             0   0             0  1  0
-      0  0             0   0             0  0  1
-      0  1             0   0             0  0  0
-      0  0             0   1             0  0  0]
-Γ1 = [0  0  0  0  0    0    0
-      0  0  0  0  0    0    0
-      0  0  0  0  ρ_i  0    0
-      0  0  0  0  0    ρ_g  0
-      0  0  0  0  0    0    ρ_u
-      1  0  0  0  0    0    0
-      0  0  1  0  0    0    0]
-c = zeros(size(Γ0, 1), 1)
-
-ψ = [0     0     0
-     0     0     0
-     σ_i   0     0
-     0     σ_g   0
-     0     0     σ_u
-     0     0     0
-     0     0     0]
-π = [0  0
-     0  0
-     0  0
-     0  0
-     0  0
-     1  0
-     0  1]
-
-A, _, B, _, _, _, _, eu, _ = gensys(Γ0, Γ1, c, ψ, π)
-
-# eu = (1, 1) => existence and uniqueness
-
