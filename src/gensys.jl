@@ -243,8 +243,8 @@ C = [0  0  0  0  0  0  0]'
 
 
 function qzdiv(stake, A, B, Q, Z, v=[])
-    n = size(A)[1]
-    vin = isempty(v)
+    n = size(A, 1)
+    vin = !isempty(v)
 
     root = abs([diag(A) diag(B)])
     root[:, 1] = root[:, 1] - (root[:, 1] .< 1e-13) .* (root[:, 1] + root[:, 2])
@@ -253,7 +253,7 @@ function qzdiv(stake, A, B, Q, Z, v=[])
     for i=n:-1:1
         m = 0
         for j = 1:-1:1
-            if (root(j,  2) > stake) || (root(j, 1) < -.1)
+            if (root[j,  2] > stake) || (root[j, 1] < -.1)
                 m=j
                 break
             end
