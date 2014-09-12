@@ -149,6 +149,7 @@ function gensys(F::Base.LinAlg.GeneralizedSchur, c, ψ, π, div)
     tmat = [eye(n-nunstab) -(ueta*(deta\veta')*veta1*deta1*ueta1')']
     G0 = [tmat*a; zeros(nunstab,n-nunstab) eye(nunstab)]
     G1 = [tmat*b; zeros(nunstab,n)]
+
     # ----------------------
     # G0 is always non-singular because by construction there are no zeros on
     # the diagonal of a(1:n-nunstab,1:n-nunstab), which forms G0's ul corner.
@@ -241,8 +242,9 @@ C = [0  0  0  0  0  0  0]'
 =#
 
 
-function qzdiv(stake, A, B, Q, Z, v)
+function qzdiv(stake, A, B, Q, Z, v=[])
     n = size(A)[1]
+    vin = isempty(v)
 
     root = abs([diag(A) diag(B)])
     root[:, 1] = root[:, 1] - (root[:, 1] .< 1e-13) .* (root[:, 1] + root[:, 2])
@@ -267,7 +269,7 @@ function qzdiv(stake, A, B, Q, Z, v)
             root[k, 2] = root[k+1, 2]
             root[k+1, 2] = temp
 
-            if vsort
+            if vin
                 temp = v[:, k]
                 v[:, k] = v[:, k+1]
                 v[:, k+1] = temp
@@ -276,11 +278,6 @@ function qzdiv(stake, A, B, Q, Z, v)
     end
 
     return A, B, Q, Z, v
-end
-
-
-function qzdiv(stake, A, B, Q, Z)
-    return qzdiv(stake, A, B, Q, Z, false)
 end
 
 
