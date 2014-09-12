@@ -3,49 +3,179 @@ module GenSys
 
 export gensys
 
-function new_div(g0, g1)
-    small = 1e-6
+function new_div(F::Base.LinAlg.GeneralizedSchur)
+    ε = 1e-6  # small number to check convergence
+    n = size(F[:T], 1)
 
-    F = schurfact(g0+0.0im, g1+0.0im)
-    a, b = F[:S], F[:T]
+    a, b, q, z = real(F[:S]), real(F[:T]), F[:Q]', F[:Z]
 
-    # TODO: unpack the rest of F like matlab does
-
-    nunstab = 0
+    nunstab = 0.0
     zxz = 0
 
+    div = 1.01
+
     for i=1:n
-        # ------------------div calc------------
-        if !fixdiv
-            if abs(a[i, i]) > 0
-                divhat = abs(b[i, i])/abs(a[i, i])
-                if 1+realsmall < divhat & divhat <= div
-                    div = .5 * (1 + divhat)
-                end
+        if abs(a[i, i]) > 0
+            divhat = abs(b[i, i]) / abs(a[i, i])
+            if 1 + ε < divhat && divhat <= div
+                div = .5 * (1 + divhat)
             end
-        end
-        # ----------------------------------------
-        nunstab=nunstab+(abs(b(i,i))>div*abs(a(i,i)));
-        if abs(a(i,i))<realsmall & abs(b(i,i))<realsmall
-            zxz=1;
         end
     end
 
+    return div
 end
 
-function gensys(g0, g1, c, psi, pi, div=1.01)
-    eu = [0; 0]
-    realsmall = 1e-6
-    n = size(g0, 1)
 
-    # I want floating point equality here. This is a stand in check to
-    # see if we just have div at its default value
-    fixdiv = div == 1.01
+## -------------- ##
+#- gensys methods -#
+## -------------- ##
 
-    # TODO: this needs to be checked
-    a, b, q, z, v = schur(g0, g1)
+# method if no div is given
+function gensys(g0, g1, c, ψ, π)
+    # TODO: right now a, b, q, and z *exactly* match MATLAB -- hence
+    #       the somewhat ugly code. We should check to see if we actually
+    #       need to do the converting to complex before computing schurfact
+    zg0, zg1 = g0 + 0.0im, g1 + 0.0im
+    F = schurfact(zg0, zg1)
+    div = new_div(F)
+    gensys(F, c, ψ, π, div)
+end
 
-end  # function
+
+# method if all arguments are given
+function gensys(g0, g1, c, ψ, π, div)
+    zg0, zg1 = g0 + 0.0im, g1 + 0.0im
+    F = schurfact(zg0, zg1)
+    gensys(F, c, ψ, π, div)
+end
+
+
+# Method that does the real work. Work directly on the decomposition
+function gensys(F::Base.LinAlg.GeneralizedSchur, c, ψ, π, div)
+    eu = [0, 0]
+    ε = 1e-6  # small number to check convergence
+    nunstab = 0.0
+    zxz = 0
+    a, b, q, z = map(real, {F[:S], F[:T], F[:Q]', F[:Z]})
+    n = size(a, 1)
+
+    for i=1:n
+        nunstab += (abs(b[i, i]) > div * abs(a[i,i]))
+        if abs(a[i, i]) < ε && abs(b[i, i]) < ε
+            zxz = 1
+        end
+    end
+
+    if zxz == 1
+        msg = "Coincident zeros.  Indeterminacy and/or nonexistence."
+        throw(InexactError(msg))
+    end
+
+    a, b, q, z = qzdiv(div, a, b, q, z)
+    gev = [diag(a) diag(b)]
+
+    q1 = q[1:n-nunstab, :]
+    q2 = q[n-nunstab+1:n, ]
+    z1 = z[:, 1:n-nunstab]'
+    z2 = z[:, n-nunstab+1:n]'
+    a2 = a[n-nunstab+1:n, n-nunstab+1:n]
+    b2 = b[n-nunstab+1:n, n-nunstab+1:n]
+    etawt = q2 * pi
+    neta = size(pi, 2)
+
+    # branch below is to handle case of no stable roots, which previously
+    # (5/9/09) quit with an error in that case.
+    if isapprox(nunstab, 0.0)
+        etawt == zeros(0, neta)
+        ueta = zeros(0, 0)
+        deta = zeros(0, 0)
+        veta = zeros(neta, 0)
+        bigev = 0
+    else
+        ueta, deta, veta = svd(etawt)
+        deta = diagm(deta)  # TODO: do we need to do this
+        md = min(size(deta))
+        bigev = find(diag(deta[1:md,1:md]) .> ε)
+        ueta = ueta[:, bigev]
+        veta = veta[:, bigev]
+        deta = deta[bigev, bigev]
+    end
+
+    eu[1] = length(bigev) >= nunstab  # PERF: not type stable
+
+    # ----------------------------------------------------
+    # Note that existence and uniqueness are not just matters of comparing
+    # numbers of roots and numbers of endogenous errors.  These counts are
+    # reported below because usually they point to the source of the problem.
+    # ------------------------------------------------------
+
+    # branch below to handle case of no stable roots
+    if nunstab == n
+        etawt1 = zeros(0, neta)
+        bigev = 0
+        ueta1 = zeros(0, 0)
+        veta1 = zeros(neta, 0)
+        deta1 = zeros(0, 0)
+    else
+        etawt1 = q1 * pi
+        ndeta1 = min(n-nunstab, neta)
+        ueta1, deta1, veta1 = svd(etawt1)
+        deta1 = diagm(deta1)  # TODO: do we need to do this
+        md = min(size(deta1))
+        bigev = find(diag(deta1[1:md, 1:md]) .> realsmall)
+        ueta1 = ueta1[:, bigev]
+        veta1 = veta1[:, bigev]
+        deta1 = deta1[bigev, bigev]
+    end
+
+    if isempty(veta1)
+        unique = 1
+    else
+        loose = veta1-veta*veta'*veta1
+        ul, dl, vl = svd(loose)
+        dl = diagm(dl)  # TODO: do we need to do this
+        nloose = sum(abs(diag(dl)) .> realsmall*n)
+        unique = (nloose == 0)
+    end
+
+    if unique
+        info("gensys: Unique solution!")
+        eu[2] = 1
+    else
+        println("Indeterminacy. $nloose loose endog errors.")
+    end
+
+    tmat = [eye(n-nunstab) -(ueta*(deta\veta')*veta1*deta1*ueta1')']
+    G0 = [tmat*a; zeros(nunstab,n-nunstab) eye(nunstab)]
+    G1 = [tmat*b; zeros(nunstab,n)]
+    # ----------------------
+    # G0 is always non-singular because by construction there are no zeros on
+    # the diagonal of a(1:n-nunstab,1:n-nunstab), which forms G0's ul corner.
+    # -----------------------
+    G0I = inv(G0)
+    G1 = G0I*G1
+    usix = n-nunstab+1:n
+    C = G0I * [tmat*q*c; (a[usix, usix] - b[usix,usix])\q2*c]
+    impact = G0I * [tmat*q*psi; zeros(nunstab, size(psi, 2))]
+    fmat = b(usix, usix)\a[usix,usix]
+    fwt = -b[usix, usix]\q2*psi
+    ywt = G0I[:, usix]
+
+    # Correction 5/07/2009:  formerly had forgotten to premultiply by G0I
+    loose = G0I * [etawt1 * (eye(neta) - veta * veta'); zeros(nunstab, neta)]
+
+    # -------------------- above are output for system in terms of z'y -------
+    G1 = real(z*G1*z')
+    C = real(z*C)
+    impact = real(z * impact)
+    loose = real(z * loose)
+
+    # Correction 10/28/96:  formerly line below had real(z*ywt) on rhs, an error.
+    ywt=z*ywt
+
+    return G1, C, impact, fmat, fwt, ywt, gev, eu, loose
+end
 
 end # module
 
@@ -54,71 +184,59 @@ end # module
 Test case from Peifan's solution
 
 %Log-linearized model should be written in Sims' form
-%Gamma0 * y(t) = Gamma1 * y(t - 1) + C + Psi * z(t) + Pi * eta(t)
+%Γ0 * y(t) = Γ1 * y(t - 1) + C + Ψ * z(t) + Π * eta(t)
 %y(t) = [Ex(t+1) xt Epi(t+1) pit it gt ut]
 %z(t) = [epsilon_i epsilon_g epsilon_u]
 %eta(t) = [err_x err_pi]
 
-sigma = 1.0
-kappa = 0.2
-beta = 0.99
-phi_pi = 1.5
-phi_x = 0.5
-rho_i = 0.9
-sigma_i = 1.0
-rho_g = 0.5
-rho_u = 0.3
-sigma_g = 1.0
-sigma_u = 1.0
-Gamma0 = [-1  1  -sigma  0  sigma  -1  0;
-           0  -kappa  -beta  1  0  0  -1;
-           0  -(1-rho_i)*phi_x  0  -(1-rho_i)*phi_pi  1  0  0;
-           0  0  0  0  0  1  0;
-           0  0  0  0  0  0  1;
-           0  1  0  0  0  0  0;
-           0  0  0  1  0  0  0];
-Gamma1 = [0  0  0  0  0  0  0;
-          0  0  0  0  0  0  0;
-          0  0  0  0  rho_i  0  0;
-          0  0  0  0  0  rho_g  0;
-          0  0  0  0  0  0  rho_u;
-          1  0  0  0  0  0  0;
-          0  0  1  0  0  0  0];
-C = [0  0  0  0  0  0  0]';
-Psi = [0  0  0;
-       0  0  0;
-       sigma_i  0  0;
-       0  sigma_g  0;
-       0  0  sigma_u;
-       0  0  0;
-       0  0  0];
-Pi = [0  0;
-      0  0;
-      0  0;
-      0  0;
-      0  0;
-      1  0;
-      0  1];
+σ = 1.0
+κ = 0.2
+β = 0.99
+ϕ_π = 1.5
+ϕ_x = 0.5
+ρ_i = 0.9
+σ_i = 1.0
+ρ_g = 0.5
+ρ_u = 0.3
+σ_g = 1.0
+σ_u = 1.0
+Γ0 = [-1  1  -σ  0  σ  -1  0
+           0  -κ  -β  1  0  0  -1
+           0  -(1-ρ_i)*ϕ_x  0  -(1-ρ_i)*ϕ_π  1  0  0
+           0  0  0  0  0  1  0
+           0  0  0  0  0  0  1
+           0  1  0  0  0  0  0
+           0  0  0  1  0  0  0]
+Γ1 = [0  0  0  0  0  0  0
+          0  0  0  0  0  0  0
+          0  0  0  0  ρ_i  0  0
+          0  0  0  0  0  ρ_g  0
+          0  0  0  0  0  0  ρ_u
+          1  0  0  0  0  0  0
+          0  0  1  0  0  0  0]
+C = [0  0  0  0  0  0  0]'
+
+Ψ = [0  0  0
+       0  0  0
+       σ_i  0  0
+       0  σ_g  0
+       0  0  σ_u
+       0  0  0
+       0  0  0]
+Π = [0  0
+      0  0
+      0  0
+      0  0
+      0  0
+      1  0
+      0  1]
 
 %Thanks Sims!
-[A, ~, B, ~, ~, ~, ~, eu, ~] = gensys(Gamma0, Gamma1, C, Psi, Pi); %#ok<ASGLU>
+[A, ~, B, ~, ~, ~, ~, eu, ~] = gensys(Γ0, Γ1, C, Ψ, Π) %#ok<ASGLU>
 %eu = (1, 1) => existence and uniqueness
 
 
-g0 = matrix(c(-1,  1,  -sigma,  0,  sigma,  -1,  0,
-              0,  -kappa,  -beta,  1,  0,  0,  -1,
-              0,  -(1-rho_i)*phi_x,  0,  -(1-rho_i)*phi_pi,  1,  0,  0,
-              0,  0,  0,  0,  0,  1,  0,
-              0,  0,  0,  0,  0,  0,  1,
-              0,  1,  0,  0,  0,  0,  0,
-              0,  0,  0,  1,  0,  0,  0), nrow=7, ncol=7, byrow=TRUE)
-g1 = matrix(c(0,  0,  0,  0,  0,  0,  0,
-          0,  0,  0,  0,  0,  0,  0,
-          0,  0,  0,  0,  rho_i,  0,  0,
-          0,  0,  0,  0,  0,  rho_g,  0,
-          0,  0,  0,  0,  0,  0,  rho_u,
-          1,  0,  0,  0,  0,  0,  0,
-          0,  0,  1,  0,  0,  0,  0), nrow=7, ncol=7, byrow=TRUE)
+
 
 =#
 
