@@ -1,7 +1,7 @@
-module GenSys
+# module GenSys
 
 
-export gensys
+# export gensys
 
 function new_div(F::Base.LinAlg.GeneralizedSchur)
     ε = 1e-6  # small number to check convergence
@@ -177,7 +177,7 @@ function gensys(F::Base.LinAlg.GeneralizedSchur, c, ψ, π, div)
     return G1, C, impact, fmat, fwt, ywt, gev, eu, loose
 end
 
-end # module
+# end # module
 
 #=
 
@@ -273,13 +273,13 @@ function qzdiv(stake, A, B, Q, Z, v)
                 v[:, k+1] = temp
             end
         end
+    end
 
     return A, B, Q, Z, v
 end
 
 
 function qzdiv(stake, A, B, Q, Z)
-
     return qzdiv(stake, A, B, Q, Z, false)
 end
 
