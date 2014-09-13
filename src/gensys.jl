@@ -27,6 +27,12 @@ Matlab's.
 The reason for this is that matlab always uses the complex version of
 the schur decomposition, even if the inputs are real numbers.
 
+The schur decomposition function in LAPACK accepts an argument for
+sorting variables.  qzdiv and qzswitch are currently doing the sorting,
+but it would be faster to just return the sorted solution.  Need to
+read a little more, but to achieve this set sort to 'Y' and sort by
+eigenvalues (into explosive and non-explosive).
+
 Description from original
 -------------------------
 
