@@ -157,7 +157,7 @@ function gensys(F::Base.LinAlg.GeneralizedSchur, c, ψ, π, div)
 
     eu[1] = length(bigev) >= nunstab
 
-    eu[1] == 1 && info("gensys: Existence of a solution!")
+    # eu[1] == 1 && info("gensys: Existence of a solution!")
 
 
     # ----------------------------------------------------
@@ -196,7 +196,7 @@ function gensys(F::Base.LinAlg.GeneralizedSchur, c, ψ, π, div)
     end
 
     if unique
-        info("gensys: Unique solution!")
+        # info("gensys: Unique solution!")
         eu[2] = 1
     else
         println("Indeterminacy. $nloose loose endog errors.")
